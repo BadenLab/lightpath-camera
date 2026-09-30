@@ -1,0 +1,42 @@
+out/
+
+# Flask instance folder (runtime data)
+instance/
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.pkl
+
+# Virtual environments
+venv/
+
+# pytest
+.cache/
+
+# === Node / Express.js ===
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Compiled output (if using TypeScript or bundlers)
+dist/
+build/
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Swap files
+*.swp
+*.swo
+
+
+

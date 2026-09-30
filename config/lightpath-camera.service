@@ -1,0 +1,11 @@
+[Unit]
+Description=Web service that provides live preview and still capture from Picamera2 compatible cameras.
+
+[Service]
+Type=oneshot
+ExecStart=/home/pi/projects/lightpath-camera/scripts/service.sh
+ExecReload=/home/pi/projects/lightpath-camera/scripts/service.sh
+WorkingDirectory=/home/pi/projects/lighpath-camera/
+
+[Install]
+WantedBy=multi-user.target

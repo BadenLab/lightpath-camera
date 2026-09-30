@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pi Camera</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+        a {
+            color: #60a5fa;
+        }
+        a:visited {
+            color: #a78bfa;
+        }
+        h1 {
+            color: #fff;
+            margin-bottom: 20px;
+        }
+        .stream-container {
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        .stream-container img {
+            width: 100%;
+            display: block;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #1d4ed8;
+        }
+        button:disabled {
+            background: #4b5563;
+            cursor: not-allowed;
+        }
+        button.danger {
+            background: #dc2626;
+        }
+        button.danger:hover {
+            background: #b91c1c;
+        }
+        .settings {
+            background: #2a2a2a;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .settings h2 {
+            margin-top: 0;
+            font-size: 18px;
+        }
+        .setting-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .setting-row label {
+            min-width: 120px;
+        }
+        .setting-row input {
+            background: #3a3a3a;
+            border: 1px solid #4a4a4a;
+            color: #e0e0e0;
+            padding: 8px 12px;
+            border-radius: 4px;
+            width: 150px;
+        }
+        .status, .config {
+            background: #2a2a2a;
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 13px;
+        }
+        .status-line, .config-line {
+            margin: 5px 0;
+        }
+        .status-label, .config-label {
+            color: #9ca3af;
+        }
+        /* Homography panel styles */
+        .homography {
+            background: #2a2a2a;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .homography h2 {
+            margin-top: 0;
+            font-size: 18px;
+        }
+        .homography .controls {
+            margin-bottom: 15px;
+        }
+        .homography .controls input {
+            background: #3a3a3a;
+            border: 1px solid #4a4a4a;
+            color: #e0e0e0;
+            padding: 8px 12px;
+            border-radius: 4px;
+            width: 60px;
+        }
+        .homography .controls label {
+            margin-left: 15px;
+        }
+        .homography-data {
+            transition: opacity 0.3s;
+        }
+        .homography-data.inactive {
+            opacity: 0.5;
+        }
+        .homography-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 8px;
+            font-family: monospace;
+            font-size: 13px;
+            margin-bottom: 10px;
+        }
+        .homography-grid .label {
+            color: #9ca3af;
+        }
+        .homography-grid .value {
+            color: #e0e0e0;
+        }
+        .homography details {
+            margin-top: 10px;
+        }
+        .homography summary {
+            cursor: pointer;
+            color: #9ca3af;
+            font-size: 13px;
+        }
+        .homography pre {
+            background: #1a1a1a;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            overflow-x: auto;
+            margin-top: 5px;
+        }
+        .detection-status {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+        .detection-status.active {
+            background: #166534;
+            color: #86efac;
+        }
+        .detection-status.inactive {
+            background: #4b5563;
+            color: #9ca3af;
+        }
+    </style>
+</head>
+<body>
+    <h1>Pi Camera</h1>
+
+    <div class="controls">
+        <button onclick="captureRaw()">Capture Raw</button>
+        <button onclick="captureDng()">Capture DNG</button>
+        <button onclick="captureJpeg()">Capture JPEG</button>
+        <button onclick="refreshSettings()">Refresh Settings</button>
+        <button onclick="refreshConfig()">Refresh Config</button>
+        <button class="danger" onclick="shutdownPi()">Shutdown</button>
+    </div>
+
+    <div class="stream-container">
+        <img id="stream" src="/stream" alt="Camera Stream">
+    </div>
+
+    <div class="homography" id="homography-panel">
+        <h2>Homography Detection <span class="detection-status inactive" id="detection-status">Inactive</span></h2>
+        <div class="controls">
+            <button id="detection-btn" onclick="toggleDetection()">Start Detection</button>
+            <label>Interval (s): <input id="detection-interval" type="number" value="2" min="0.5" max="10" step="0.5"></label>
+            <a href="/static/checkerboard-11r-17c-50s.png">Checkerboard pattern</a>
+        </div>
+        <div class="homography-data inactive" id="homography-data">
+            <div class="homography-grid">
+                <div><span class="label">Rotation:</span> <span class="value" id="h-rotation">--</span></div>
+                <div><span class="label">Zoom:</span> <span class="value" id="h-zoom">--</span></div>
+                <div><span class="label">Scale X:</span> <span class="value" id="h-scale-x">--</span></div>
+                <div><span class="label">Scale Y:</span> <span class="value" id="h-scale-y">--</span></div>
+                <div><span class="label">Aspect Ratio:</span> <span class="value" id="h-aspect">--</span></div>
+                <div><span class="label">Perspective:</span> <span class="value" id="h-perspective">--</span></div>
+                <div><span class="label">Persp. Dir:</span> <span class="value" id="h-persp-dir">--</span></div>
+                <div><span class="label">Center ΔX:</span> <span class="value" id="h-cdx">--</span></div>
+                <div><span class="label">Center ΔY:</span> <span class="value" id="h-cdy">--</span></div>
+                <div><span class="label">Sharpness:</span> <span class="value" id="h-sharpness">--</span></div>
+            </div>
+            <details>
+                <summary>Raw Matrix</summary>
+                <pre id="h-matrix">--</pre>
+            </details>
+        </div>
+    </div>
+
+    <div class="settings">
+        <h2>Manual Settings</h2>
+        <div class="setting-row">
+            <label>Exposure (ms):</label>
+            <input type="number" id="exposure" min="1" max="100000" value="100">
+        </div>
+        <div class="setting-row">
+            <label>Analogue Gain:</label>
+            <input type="number" id="gain" min="1" max="16" step="0.1" value="1.0">
+        </div>
+        <button onclick="applySettings()">Apply Settings</button>
+    </div>
+
+
+    <div class="status" id="status">
+        <div class="status-line"><span class="status-label">Status:</span> Ready</div>
+    </div>
+    <div class="config" id="config">
+        <div class="config-line"><span class="config-label">Config:</span> Ready</div>
+    </div>
+
+    <script>
+        function setStatus(message) {
+            document.getElementById('status').innerHTML =
+                `<div class="status-line"><span class="status-label">Status:</span> ${message}</div>`;
+        }
+        function setConfig(message) {
+            document.getElementById('config').innerHTML =
+                `<div class="config-line"><span class="config-label">Config:</span> ${message}</div>`;
+        }
+
+        async function captureRaw() {
+            setStatus('Capturing raw...');
+            try {
+                const response = await fetch('/capture?format=raw', { method: 'POST' });
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'capture.raw';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    setStatus('Raw capture downloaded');
+                } else {
+                    setStatus('Capture failed: ' + response.statusText);
+                }
+            } catch (e) {
+                setStatus('Error: ' + e.message);
+            }
+        }
+
+        async function captureDng() {
+            setStatus('Capturing DNG...');
+            try {
+                const response = await fetch('/capture?format=dng', { method: 'POST' });
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'capture.dng';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    setStatus('DNG capture downloaded');
+                } else {
+                    setStatus('Capture failed: ' + response.statusText);
+                }
+            } catch (e) {
+                setStatus('Error: ' + e.message);
+            }
+        }
+
+        async function captureJpeg() {
+            setStatus('Capturing JPEG...');
+            try {
+                const response = await fetch('/capture?format=jpeg', { method: 'POST' });
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'capture.jpg';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    setStatus('JPEG capture downloaded');
+                } else {
+                    setStatus('Capture failed: ' + response.statusText);
+                }
+            } catch (e) {
+                setStatus('Error: ' + e.message);
+            }
+        }
+
+
+        async function refreshSettings() {
+            try {
+                const response = await fetch('/settings');
+                const data = await response.json();
+                document.getElementById('exposure').value = data.exposure_time;
+                document.getElementById('gain').value = data.analogue_gain;
+                setStatus(`Settings: exposure=${data.exposure_time}ms, gain=${data.analogue_gain}, AE=${data.AeEnabled}`);
+            } catch (e) {
+                setStatus('Error: ' + e.message);
+            }
+        }
+
+        async function refreshConfig() {
+            try {
+                const response = await fetch('/config');
+                const data = await response.json();
+                config_str = data['config_str'];
+                setConfig(`${config_str}`);
+            } catch (e) {
+                setConfig('Error: ' + e.message);
+            }
+        }
+
+        async function shutdownPi() {
+            if (!confirm('Shut down the Raspberry Pi?')) return;
+            setStatus('Shutting down...');
+            try {
+                const response = await fetch('/shutdown', { method: 'POST' });
+                if (response.ok) {
+                    setStatus('Shutting down. Safe to unplug once the green LED stops blinking.');
+                } else {
+                    setStatus('Shutdown failed: ' + response.statusText);
+                }
+            } catch (e) {
+                setStatus('Error: ' + e.message);
+            }
+        }
+
+        async function applySettings() {
+            const exposure = parseInt(document.getElementById('exposure').value);
+            const gain = parseFloat(document.getElementById('gain').value);
+
+            setStatus('Applying settings...');
+            try {
+                const response = await fetch('/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ exposure_time: exposure, analogue_gain: gain })
+                });
+                const data = await response.json();
+								setStatus(`Applied: exposure=${data.exposure_time}ms, gain=${data.analogue_gain}`);
+            } catch (e) {
+                setStatus('Error: ' + e.message);
+            }
+        }
+
+        // Load settings on page load
+        refreshSettings();
+        refreshConfig();
+
+        // Homography detection
+        let detectionActive = false;
+        let eventSource = null;
+
+        function formatMatrix(matrix) {
+            if (!matrix) return '--';
+            return matrix.map(row =>
+                row.map(v => v.toFixed(6).padStart(12)).join(' ')
+            ).join('\n');
+        }
+
+        function updateHomographyDisplay(data) {
+            const panel = document.getElementById('homography-data');
+            const sharpEl = document.getElementById('h-sharpness');
+            if (data.sharpness != null) {
+                sharpEl.textContent = data.sharpness.toFixed(1);
+            } else {
+                sharpEl.textContent = '--';
+            }
+            if (!data.found) {
+                panel.classList.add('inactive');
+                document.getElementById('h-rotation').textContent = '--';
+                document.getElementById('h-zoom').textContent = '--';
+                document.getElementById('h-scale-x').textContent = '--';
+                document.getElementById('h-scale-y').textContent = '--';
+                document.getElementById('h-aspect').textContent = '--';
+                document.getElementById('h-perspective').textContent = '--';
+                document.getElementById('h-persp-dir').textContent = '--';
+                document.getElementById('h-cdx').textContent = '--';
+                document.getElementById('h-cdy').textContent = '--';
+                document.getElementById('h-matrix').textContent = '--';
+                return;
+            }
+            panel.classList.remove('inactive');
+            const d = data.decomposed;
+            document.getElementById('h-rotation').textContent = d.rotation_deg.toFixed(2) + '\u00B0';
+            document.getElementById('h-zoom').textContent = d.zoom.toFixed(4);
+            document.getElementById('h-scale-x').textContent = d.scale_x.toFixed(4);
+            document.getElementById('h-scale-y').textContent = d.scale_y.toFixed(4);
+            document.getElementById('h-aspect').textContent = d.aspect_ratio.toFixed(4);
+            document.getElementById('h-perspective').textContent = d.perspective_magnitude.toFixed(6);
+            const perspDirEl = document.getElementById('h-persp-dir');
+            perspDirEl.textContent = d.perspective_direction_deg.toFixed(2) + '\u00B0';
+            const opacity = Math.min(1, d.perspective_magnitude * 5000);
+            perspDirEl.style.opacity = 0.2 + 0.8 * opacity;
+            document.getElementById('h-cdx').textContent =
+                d.center_dx_mm.toFixed(4) + ' mm (' + d.center_dx_px.toFixed(1) + ' px)';
+            document.getElementById('h-cdy').textContent =
+                d.center_dy_mm.toFixed(4) + ' mm (' + d.center_dy_px.toFixed(1) + ' px)';
+            document.getElementById('h-matrix').textContent = formatMatrix(data.matrix);
+        }
+
+        async function toggleDetection() {
+            const btn = document.getElementById('detection-btn');
+            const statusEl = document.getElementById('detection-status');
+
+            if (!detectionActive) {
+                const interval = parseFloat(document.getElementById('detection-interval').value) || 2.0;
+                try {
+                    await fetch('/homography/start', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ interval: interval })
+                    });
+                    eventSource = new EventSource('/homography/events');
+                    eventSource.onmessage = (e) => {
+                        const data = JSON.parse(e.data);
+                        updateHomographyDisplay(data);
+                    };
+                    eventSource.onerror = () => {
+                        setStatus('SSE connection error');
+                    };
+                    detectionActive = true;
+                    btn.textContent = 'Stop Detection';
+                    statusEl.textContent = 'Active';
+                    statusEl.classList.remove('inactive');
+                    statusEl.classList.add('active');
+                    setStatus('Detection started');
+                } catch (e) {
+                    setStatus('Error starting detection: ' + e.message);
+                }
+            } else {
+                try {
+                    await fetch('/homography/stop', { method: 'POST' });
+                    if (eventSource) {
+                        eventSource.close();
+                        eventSource = null;
+                    }
+                    detectionActive = false;
+                    btn.textContent = 'Start Detection';
+                    statusEl.textContent = 'Inactive';
+                    statusEl.classList.remove('active');
+                    statusEl.classList.add('inactive');
+                    setStatus('Detection stopped');
+                } catch (e) {
+                    setStatus('Error stopping detection: ' + e.message);
+                }
+            }
+        }
+    </script>
+</body>
+</html>
